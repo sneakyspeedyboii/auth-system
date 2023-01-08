@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-cli.exe"
+
+  output = "../src/prisma.rs"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.sqlite"
+}
+
+model UserData {
+  id        Int      @id @default(autoincrement())
+  Username  String   @unique
+  Password  String
+}
+
+model CookieTokens {
+  id       Int       @id @default(autoincrement())
+  UsernameID  Int    @unique
+  Username  String   @unique
+  Token     String   @unique
+}
