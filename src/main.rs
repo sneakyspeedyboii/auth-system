@@ -88,6 +88,86 @@ async fn main() {
                    // axum_server::bind_rustls(addr, tls).serve(app.into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();            //Production, with certs
 }
 
+async fn register(Json(payload): Json<Credentials>) -> impl IntoResponse {
+    let username = payload.username.to_lowercase().trim().to_string();
+
+    if let Ok(db) = prisma::new_client().await {
+        if let Ok(is_unique) = db
+            .user_data()
+            .find_unique(prisma::user_data::username::equals(username.clone()))
+            .exec()
+            .await
+        {
+            match is_unique {
+                
+                None => {
+                    let argon = Argon2::default();
+                    let salt = SaltString::generate(&mut OsRng);
+
+                    if let Ok(hashed_result) =
+                        argon.hash_password(payload.password.as_bytes(), &salt)
+                    {
+                        match argon.verify_password(payload.password.as_bytes(), &hashed_result) {
+                            Ok(_) => {
+                                match db
+                                    .user_data()
+                                    .create(username.clone(), hashed_result.to_string(), vec![])
+                                    .exec()
+                                    .await
+                                {
+                                    Ok(db_stored_data) => {
+                                        return (
+                                            StatusCode::CREATED,
+                                            Json(RegisterResponse {
+                                                id: db_stored_data.id,
+                                            }),
+                                        )
+                                            .into_response();
+                                    }
+                                    Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                                }
+                            }
+                            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                        }
+                    } else {
+                        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                    }
+                },
+                Some(_) => return StatusCode::CONFLICT.into_response()
+            }
+        } else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    } else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+}
+
+async fn whoami(Json(payload): Json<UserID>) -> Response {
+    if let Ok(db) = prisma::new_client().await {
+        if let Ok(user) = db
+            .user_data()
+            .find_unique(prisma::user_data::id::equals(payload.id))
+            .exec()
+            .await
+        {
+            match user {
+                Some(data) => Json(WhoAmI {
+                    id: payload.id,
+                    username: data.username,
+                })
+                .into_response(),
+
+                None => StatusCode::NOT_FOUND.into_response(),
+            }
+        } else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    } else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+}
+
 async fn login(jar: PrivateCookieJar, Json(payload): Json<Credentials>) -> Response {
     let username = payload.username.to_lowercase().trim().to_string();
 
@@ -429,85 +509,6 @@ async fn logout(jar: PrivateCookieJar) -> Response {
             }
         }
         None => return StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-async fn register(Json(payload): Json<Credentials>) -> impl IntoResponse {
-    let username = payload.username.to_lowercase().trim().to_string();
-
-    if let Ok(db) = prisma::new_client().await {
-        if let Ok(is_unique) = db
-            .user_data()
-            .find_unique(prisma::user_data::username::equals(username.clone()))
-            .exec()
-            .await
-        {
-            match is_unique {
-                Some(_) => return StatusCode::CONFLICT.into_response(),
-                None => {
-                    let argon = Argon2::default();
-                    let salt = SaltString::generate(&mut OsRng);
-
-                    if let Ok(hashed_result) =
-                        argon.hash_password(payload.password.as_bytes(), &salt)
-                    {
-                        match argon.verify_password(payload.password.as_bytes(), &hashed_result) {
-                            Ok(_) => {
-                                match db
-                                    .user_data()
-                                    .create(username.clone(), hashed_result.to_string(), vec![])
-                                    .exec()
-                                    .await
-                                {
-                                    Ok(db_stored_data) => {
-                                        return (
-                                            StatusCode::CREATED,
-                                            Json(RegisterResponse {
-                                                id: db_stored_data.id,
-                                            }),
-                                        )
-                                            .into_response();
-                                    }
-                                    Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-                                }
-                            }
-                            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-                        }
-                    } else {
-                        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-                    }
-                }
-            }
-        } else {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    } else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    }
-}
-
-async fn whoami(Json(payload): Json<UserID>) -> Response {
-    if let Ok(db) = prisma::new_client().await {
-        if let Ok(user) = db
-            .user_data()
-            .find_unique(prisma::user_data::id::equals(payload.id))
-            .exec()
-            .await
-        {
-            match user {
-                Some(data) => Json(WhoAmI {
-                    id: payload.id,
-                    username: data.username,
-                })
-                .into_response(),
-
-                None => StatusCode::NOT_FOUND.into_response(),
-            }
-        } else {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    } else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 }
 
