@@ -15,3 +15,5 @@ Session based auth system which mostly works
 -Implement ip login/registration attempt system to stop brute forcing over network / large amounts of accounts being created
 
 -2fa hardware token support
+
+-error handling with error stack
