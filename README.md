@@ -17,3 +17,7 @@ Session based auth system which mostly works
 -2fa hardware token support
 
 -error handling with error stack
+
+-re-write with sea-orm
+
+-turn into a lib???
